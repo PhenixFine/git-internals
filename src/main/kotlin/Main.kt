@@ -4,18 +4,12 @@ import java.util.zip.InflaterInputStream
 
 fun main() {
     try {
-        val gitFile = FileInputStream(getString("Enter git object location:"))
-        val inflate = InflaterInputStream(gitFile).reader()
-        var firstLine = true
+        val directory = getString("Enter .git directory location:")
+        val gitHash = getString("Enter git object hash:")
+        val gitFile = FileInputStream("$directory/${gitHash.substring(0, 2)}/${gitHash.substring(2)}")
+        val header = InflaterInputStream(gitFile).reader().readLines()[0].split('\u0000')[0].split(" ")
 
-        inflate.forEachLine {
-            if (firstLine) {
-                for (char in it) if (char.toInt() == 0) println() else print(char)
-                firstLine = false
-                println()
-            } else println(it)
-        }
-        inflate.close()
+        println("type:${header[0]} length:${header[1]}")
         gitFile.close()
     } catch (e: FileNotFoundException) {
         println("File not found.\n")
