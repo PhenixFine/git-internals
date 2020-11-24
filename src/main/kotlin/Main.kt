@@ -12,6 +12,7 @@ fun main() {
         when (getString("Enter command:").toLowerCase()) {
             "list-branches" -> listBranches(directory)
             "cat-file" -> catFile(directory)
+            "log" -> log(directory)
         }
 
     } catch (e: FileNotFoundException) {
@@ -57,6 +58,46 @@ fun catFile(directory: String) {
                     println(line)
                 }
             }
+        }
+    }
+}
+
+fun log(directory: String) {
+    val branch = getString("Enter branch name:")
+    var hash = File("$directory/refs/heads/$branch").readText().trim()
+    val gitFile = { FileInputStream("$directory/objects/${hash.substring(0, 2)}/${hash.substring(2)}") }
+    val inflatedFile = { InflaterInputStream(gitFile()).reader().readLines() }
+    var currentFile = inflatedFile()
+    var stop = false
+    var commitMessage = false
+
+    while (!stop) {
+        var parentFound = false
+
+        stop = true
+        println("Commit: $hash")
+        for (i in currentFile.indices) {
+            val line = if (i == 0) currentFile[0].split(0.toChar())[1] else currentFile[i]
+
+            when {
+                commitMessage -> println(line)
+                line == "" -> commitMessage = true
+                else -> {
+                    when (val type = line.substring(0, 6)) {
+                        "parent" -> if (!parentFound) {
+                            hash = line.split(" ")[1]
+                            stop = false
+                            parentFound = true
+                        }
+                        "commit" -> println(formatLine(line.substringAfter(' '), type))
+                    }
+                }
+            }
+        }
+        if (!stop) {
+            currentFile = inflatedFile()
+            commitMessage = false
+            println()
         }
     }
 }
