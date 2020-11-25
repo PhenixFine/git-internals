@@ -31,15 +31,16 @@ fun listBranches(directory: String) {
     }
 }
 
-fun catFile(directory: String) {
-    val gitHash = getString("Enter git object hash:")
+fun catFile(directory: String, log: Boolean = false, hash: String = ""): String {
+    val gitHash = if (hash != "") hash else getString("Enter git object hash:")
     val gitFile = { FileInputStream("$directory/objects/${gitHash.substring(0, 2)}/${gitHash.substring(2)}") }
     val inflatedFile = InflaterInputStream(gitFile()).reader().readLines()
     val headerFirst = inflatedFile[0].split(0.toChar())
     val header = headerFirst[0].split(" ")[0].toUpperCase()
     var commitMessage = false
+    var returnString = ""
 
-    println("*$header*")
+    if (!log) println("*$header*")
     if (header == "TREE") handleTree(gitFile()) else {
         for (i in inflatedFile.indices) {
             if (header == "BLOB" || commitMessage) {
@@ -47,58 +48,37 @@ fun catFile(directory: String) {
             } else {
                 if (i != 0 && inflatedFile[i] == "") {
                     commitMessage = true
-                    if (i != inflatedFile.lastIndex) println("commit message:")
+                    if (i != inflatedFile.lastIndex && !log) println("commit message:")
                 } else {
                     var line = (if (i == 0) headerFirst[1] else inflatedFile[i]).replaceFirst(" ", ": ")
 
                     when (val type = line.substring(0, 6)) {
-                        "parent" -> line = line.replace("parent", "parents")
-                        "author", "commit" -> line = formatLine(line, type)
+                        "parent" -> {
+                            if (!log) line = line.replace("parent", "parents") else {
+                                if (returnString == "") returnString = line.split(" ")[1]
+                            }
+                        }
+                        "author", "commit" -> if (!log) line = formatLine(line, type) else {
+                            if (type == "commit") println(formatLine(line.substringAfter(' '), type))
+                        }
                     }
-                    println(line)
+                    if (!log) println(line)
                 }
             }
         }
     }
+    return returnString
 }
 
 fun log(directory: String) {
     val branch = getString("Enter branch name:")
     var hash = File("$directory/refs/heads/$branch").readText().trim()
-    val gitFile = { FileInputStream("$directory/objects/${hash.substring(0, 2)}/${hash.substring(2)}") }
-    val inflatedFile = { InflaterInputStream(gitFile()).reader().readLines() }
-    var currentFile = inflatedFile()
     var stop = false
-    var commitMessage = false
 
     while (!stop) {
-        var parentFound = false
-
-        stop = true
         println("Commit: $hash")
-        for (i in currentFile.indices) {
-            val line = if (i == 0) currentFile[0].split(0.toChar())[1] else currentFile[i]
-
-            when {
-                commitMessage -> println(line)
-                line == "" -> commitMessage = true
-                else -> {
-                    when (val type = line.substring(0, 6)) {
-                        "parent" -> if (!parentFound) {
-                            hash = line.split(" ")[1]
-                            stop = false
-                            parentFound = true
-                        }
-                        "commit" -> println(formatLine(line.substringAfter(' '), type))
-                    }
-                }
-            }
-        }
-        if (!stop) {
-            currentFile = inflatedFile()
-            commitMessage = false
-            println()
-        }
+        hash = catFile(directory, true, hash)
+        if (hash == "") stop = true else println()
     }
 }
 
