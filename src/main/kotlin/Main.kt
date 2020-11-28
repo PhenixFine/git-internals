@@ -13,6 +13,7 @@ fun main() {
             "list-branches" -> listBranches(directory)
             "cat-file" -> catFile(directory)
             "log" -> log(directory)
+            "commit-tree" -> commitTree(directory)
         }
 
     } catch (e: FileNotFoundException) {
@@ -31,24 +32,30 @@ fun listBranches(directory: String) {
     }
 }
 
-fun catFile(directory: String, log: Boolean = false, hash: String = ""): String {
+fun catFile(
+    directory: String,
+    hash: String = "",
+    log: Boolean = false,
+    tree: Boolean = false,
+    head: Boolean = false
+): String {
     val gitHash = if (hash != "") hash else getString("Enter git object hash:")
-    val gitFile = { FileInputStream("$directory/objects/${gitHash.substring(0, 2)}/${gitHash.substring(2)}") }
-    val inflatedFile = InflaterInputStream(gitFile()).reader().readLines()
+   val inflatedFile = InflaterInputStream(gitFile(directory, gitHash)).reader().readLines()
     val headerFirst = inflatedFile[0].split(0.toChar())
     val header = headerFirst[0].split(" ")[0].toUpperCase()
     var commitMessage = false
     var returnString = ""
 
-    if (!log) println("*$header*")
-    if (header == "TREE") handleTree(gitFile()) else {
+    if (head) return header
+    if (!log && !tree) println("*$header*")
+    if (header == "TREE") handleTree(gitFile(directory, gitHash)) else {
         for (i in inflatedFile.indices) {
             if (header == "BLOB" || commitMessage) {
-                println(if (i == 0) headerFirst[1] else inflatedFile[i])
+                if (!tree) println(if (i == 0) headerFirst[1] else inflatedFile[i])
             } else {
                 if (i != 0 && inflatedFile[i] == "") {
                     commitMessage = true
-                    if (i != inflatedFile.lastIndex && !log) println("commit message:")
+                    if (i != inflatedFile.lastIndex && !log && !tree) println("commit message:")
                 } else {
                     var line = (if (i == 0) headerFirst[1] else inflatedFile[i]).replaceFirst(" ", ": ")
 
@@ -58,11 +65,12 @@ fun catFile(directory: String, log: Boolean = false, hash: String = ""): String 
                                 if (returnString == "") returnString = line.split(" ")[1]
                             }
                         }
-                        "author", "commit" -> if (!log) line = formatLine(line, type) else {
+                        "author", "commit" -> if (!log && !tree) line = formatLine(line, type) else if (log) {
                             if (type == "commit") println(formatLine(line.substringAfter(' '), type))
                         }
+                        "tree: " -> if (tree) return line.substringAfter(' ')
                     }
-                    if (!log) println(line)
+                    if (!log && !tree) println(line)
                 }
             }
         }
@@ -77,8 +85,20 @@ fun log(directory: String) {
 
     while (!stop) {
         println("Commit: $hash")
-        hash = catFile(directory, true, hash)
+        hash = catFile(directory, hash, true)
         if (hash == "") stop = true else println()
+    }
+}
+
+fun commitTree(directory: String, hash: String = "", line: String = "") {
+    val gitHash = if (hash == "") catFile(directory, getString("Enter commit hash"), tree = true) else hash
+    val fileMap = handleTree(gitFile(directory, gitHash), true)
+
+    for ((name, hash2) in fileMap) {
+        val fileName = if (line == "") name else "$line/$name"
+
+        if (catFile(directory, hash2, head = true) == "TREE") commitTree(directory, hash2, fileName)
+        else println(fileName)
     }
 }
 
@@ -101,10 +121,12 @@ fun formatLine(lineStr: String, type: String): String {
     return line.trim()
 }
 
-fun handleTree(gitFile: FileInputStream) {
+fun handleTree(gitFile: FileInputStream, returnInfo: Boolean = false): Map<String, String> {
     val inflatedBytes = InflaterInputStream(gitFile).readAllBytes()
     var combined = ""
     var lastWord = ""
+    var correctHash = ""
+    val fileHash = mutableMapOf<String, String>()
     var count = 0
     var byteCount = 0
     var passedHeader = false
@@ -120,8 +142,11 @@ fun handleTree(gitFile: FileInputStream) {
                 2 -> {
                     byteCount++
                     combined += String.format("%X", byte).toLowerCase()
+                    if (returnInfo) correctHash += String.format("%02X", byte).toLowerCase()
                     if (byteCount == 20) {
                         combined += " $lastWord\n"
+                        if (returnInfo) fileHash[lastWord] = correctHash
+                        if (returnInfo) correctHash = ""
                         lastWord = ""
                         count = 0
                         byteCount = 0
@@ -131,9 +156,13 @@ fun handleTree(gitFile: FileInputStream) {
         }
         if (!passedHeader && byte.toChar() == 0.toChar()) passedHeader = true
     }
-    print(combined)
+    if (!returnInfo) print(combined)
     gitFile.close()
+    return fileHash
 }
+
+fun gitFile(directory: String, hash: String) =
+    FileInputStream("$directory/objects/${hash.substring(0, 2)}/${hash.substring(2)}")
 
 fun getString(text: String): String {
     println(text)
