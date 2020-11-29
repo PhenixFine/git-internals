@@ -40,7 +40,7 @@ fun catFile(
     head: Boolean = false
 ): String {
     val gitHash = if (hash != "") hash else getString("Enter git object hash:")
-   val inflatedFile = InflaterInputStream(gitFile(directory, gitHash)).reader().readLines()
+    val inflatedFile = InflaterInputStream(gitFile(directory, gitHash)).reader().readLines()
     val headerFirst = inflatedFile[0].split(0.toChar())
     val header = headerFirst[0].split(" ")[0].toUpperCase()
     var commitMessage = false
